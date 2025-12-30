@@ -1,0 +1,29 @@
+[package]
+name = "utsuri-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Core cryptographic and utility functions for Utsuri"
+authors = ["Utsuri Labs"]
+repository = "https://github.com/utsuri-labs/utsuri-core"
+
+[dependencies]
+# Crypto
+k256 = { version = "0.13", features = ["ecdsa", "ecdsa-core"] }
+sha2 = "0.10"
+ripemd = "0.1"
+hex = "0.4"
+bech32 = "0.11"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+
+[features]
+default = []
+# Enable WASM-specific features (for wasm-bindgen crates)
+wasm = []
+
