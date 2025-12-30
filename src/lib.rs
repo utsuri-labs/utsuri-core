@@ -10,8 +10,10 @@
 //! ```rust
 //! use utsuri_core::crypto;
 //!
-//! let keypair = crypto::derive_keypair("signature_hex", "domain");
-//! let address = crypto::pubkey_to_address(&keypair.public_key, "utsuri");
+//! // Derive a keypair from a signature
+//! let sig_hex = "abcd1234".repeat(16); // 64 bytes hex
+//! let keypair = crypto::derive_keypair(&sig_hex, "domain", "utsuri").unwrap();
+//! assert!(keypair.address.starts_with("utsuri1"));
 //! ```
 
 pub mod crypto;
