@@ -155,7 +155,7 @@ pub fn ripemd160(data: &[u8]) -> Vec<u8> {
 }
 
 // ============================================================================
-// Deterministic Address Derivation (matches x/account/types/address.go)
+// Deterministic Address Derivation (matches Utsuri Protocol x/account/types/address.go)
 // ============================================================================
 
 /// Supported chain types for address derivation
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_derive_utsuri_address_deterministic() {
         // Same input should always produce same output
-        let evm_addr = "0xdead000000000000000000000000000000000beef";
+        let evm_addr = "0xdead00000000000000000000000000000000beef"; // 40 hex chars
         let addr1 = derive_utsuri_address(CHAIN_TYPE_EVM, evm_addr).unwrap();
         let addr2 = derive_utsuri_address(CHAIN_TYPE_EVM, evm_addr).unwrap();
         assert_eq!(addr1, addr2);
