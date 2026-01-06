@@ -21,6 +21,12 @@ pub enum UtsuriError {
 
     #[error("Hash computation failed: {0}")]
     HashError(String),
+
+    #[error("Invalid chain type: {0}")]
+    InvalidChainType(String),
+
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
 }
 
 pub type Result<T> = std::result::Result<T, UtsuriError>;

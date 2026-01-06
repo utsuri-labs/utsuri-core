@@ -154,6 +154,92 @@ pub fn ripemd160(data: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
+// ============================================================================
+// Deterministic Address Derivation (matches x/account/types/address.go)
+// ============================================================================
+
+/// Supported chain types for address derivation
+pub const CHAIN_TYPE_EVM: &str = "evm";
+pub const CHAIN_TYPE_SOLANA: &str = "solana";
+pub const CHAIN_TYPE_COSMOS: &str = "cosmos";
+
+/// Derive a deterministic Utsuri address from an external address.
+/// 
+/// The same external address will always produce the same Utsuri address.
+/// This matches the on-chain derivation in `x/account/types/address.go`.
+///
+/// Algorithm: SHA256(normalized_input) -> RIPEMD160 -> bech32("utsuri", hash)
+///
+/// # Arguments
+/// * `chain_type` - Chain type: "evm", "solana", or "cosmos"
+/// * `external_address` - The external address (hex for EVM, base58 for Solana, bech32 for Cosmos)
+///
+/// # Returns
+/// The derived Utsuri bech32 address
+pub fn derive_utsuri_address(chain_type: &str, external_address: &str) -> Result<String> {
+    // Normalize the address to canonical bytes
+    let normalized = normalize_external_address(chain_type, external_address)?;
+    
+    // SHA256 -> RIPEMD160 -> bech32 (same as pubkey_to_address but different input)
+    let sha_hash = sha256(&normalized);
+    let ripemd_hash = ripemd160(&sha_hash);
+    
+    // Bech32 encode with "utsuri" prefix
+    let hrp = Hrp::parse("utsuri")
+        .map_err(|e| UtsuriError::Bech32Error(format!("Invalid prefix: {}", e)))?;
+    let address = bech32::encode::<Bech32>(hrp, &ripemd_hash)
+        .map_err(|e| UtsuriError::Bech32Error(e.to_string()))?;
+    
+    Ok(address)
+}
+
+/// Normalize an external address to canonical bytes for derivation.
+fn normalize_external_address(chain_type: &str, address: &str) -> Result<Vec<u8>> {
+    match chain_type {
+        CHAIN_TYPE_EVM => normalize_evm_address(address),
+        CHAIN_TYPE_SOLANA => normalize_solana_address(address),
+        CHAIN_TYPE_COSMOS => normalize_cosmos_address(address),
+        _ => Err(UtsuriError::InvalidChainType(chain_type.to_string())),
+    }
+}
+
+/// Normalize EVM address: lowercase, no 0x prefix, decode to 20 bytes
+fn normalize_evm_address(address: &str) -> Result<Vec<u8>> {
+    let addr = address.to_lowercase();
+    let addr = addr.trim_start_matches("0x");
+    
+    if addr.len() != 40 {
+        return Err(UtsuriError::InvalidAddress(format!(
+            "EVM address must be 40 hex chars, got {}", addr.len()
+        )));
+    }
+    
+    hex::decode(addr)
+        .map_err(|e| UtsuriError::InvalidHex(e.to_string()))
+}
+
+/// Normalize Solana address: base58 decode to 32 bytes
+fn normalize_solana_address(address: &str) -> Result<Vec<u8>> {
+    let bytes = bs58::decode(address)
+        .into_vec()
+        .map_err(|e| UtsuriError::InvalidAddress(format!("Invalid base58: {}", e)))?;
+    
+    if bytes.len() != 32 {
+        return Err(UtsuriError::InvalidAddress(format!(
+            "Solana address must be 32 bytes, got {}", bytes.len()
+        )));
+    }
+    
+    Ok(bytes)
+}
+
+/// Normalize Cosmos address: bech32 decode to underlying bytes
+fn normalize_cosmos_address(address: &str) -> Result<Vec<u8>> {
+    let (_, data) = bech32::decode(address)
+        .map_err(|e| UtsuriError::InvalidAddress(format!("Invalid bech32: {}", e)))?;
+    Ok(data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +264,51 @@ mod tests {
         let pubkey_bytes = hex::decode(pubkey_hex).unwrap();
         let address = pubkey_to_address(&pubkey_bytes, "utsuri").unwrap();
         assert!(address.starts_with("utsuri1"));
+    }
+
+    #[test]
+    fn test_derive_utsuri_address_evm() {
+        // Test EVM address derivation
+        let evm_addr = "0x742d35Cc6634C0532925a3b844Bc9e7595f8fE87";
+        let result = derive_utsuri_address(CHAIN_TYPE_EVM, evm_addr);
+        assert!(result.is_ok());
+        
+        let utsuri_addr = result.unwrap();
+        assert!(utsuri_addr.starts_with("utsuri1"));
+        
+        // Test case insensitivity (should produce same address)
+        let lower = "0x742d35cc6634c0532925a3b844bc9e7595f8fe87";
+        let result2 = derive_utsuri_address(CHAIN_TYPE_EVM, lower).unwrap();
+        assert_eq!(utsuri_addr, result2);
+        
+        // Test without 0x prefix
+        let no_prefix = "742d35cc6634c0532925a3b844bc9e7595f8fe87";
+        let result3 = derive_utsuri_address(CHAIN_TYPE_EVM, no_prefix).unwrap();
+        assert_eq!(utsuri_addr, result3);
+    }
+
+    #[test]
+    fn test_derive_utsuri_address_deterministic() {
+        // Same input should always produce same output
+        let evm_addr = "0xdead000000000000000000000000000000000beef";
+        let addr1 = derive_utsuri_address(CHAIN_TYPE_EVM, evm_addr).unwrap();
+        let addr2 = derive_utsuri_address(CHAIN_TYPE_EVM, evm_addr).unwrap();
+        assert_eq!(addr1, addr2);
+    }
+
+    #[test]
+    fn test_derive_utsuri_address_invalid() {
+        // Invalid chain type
+        let result = derive_utsuri_address("invalid", "0x123");
+        assert!(result.is_err());
+        
+        // Invalid EVM address (too short)
+        let result = derive_utsuri_address(CHAIN_TYPE_EVM, "0x1234");
+        assert!(result.is_err());
+        
+        // Invalid EVM address (invalid hex)
+        let result = derive_utsuri_address(CHAIN_TYPE_EVM, "0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ");
+        assert!(result.is_err());
     }
 }
 
